@@ -9,10 +9,11 @@ import (
 	"net/http"
 )
 
-type UserData struct {
-	Role   int    `json:"role"`
-	Status int    `json:"status"`
-	Token  string `json:"token"`
+type SessionData struct {
+	Role      int    `json:"role"`
+	Status    int    `json:"status"`
+	Token     string `json:"token"`
+	SessionID string `json:"session_id"`
 }
 
 // CasbinMiddleware Casbin 中间件
@@ -26,12 +27,12 @@ func CasbinMiddleware(e *casbin.Enforcer) gin.HandlerFunc {
 		}
 
 		// 将 JSON 字符串解析为 Go 的结构体
-		var userData UserData
-		err = json.Unmarshal([]byte(result), &userData)
+		var sessionData SessionData
+		err = json.Unmarshal([]byte(result), &sessionData)
 		if err != nil {
 			logger.Error("Failed to unmarshal JSON data: %v", err)
 		}
-		types := userData.Role
+		types := sessionData.Role
 		// 获取当前用户的角色或身份标识
 		sub := getRole(types)
 		// 获取请求的 URL 和 Method

@@ -1,10 +1,14 @@
 package middleware
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Zkeai/go_template/common/conf"
+	"github.com/Zkeai/go_template/common/logger"
 	"github.com/Zkeai/go_template/common/redis"
 	"github.com/gin-gonic/gin"
+	redisv8 "github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v4"
 	"net/http"
 	"strings"
@@ -12,18 +16,25 @@ import (
 )
 
 type CustomClaims struct {
-	Wallet string `json:"wallet"`
+	Wallet    string `json:"wallet"`
+	SessionID string `json:"session_id"`
 	jwt.RegisteredClaims
+}
+
+type ValidateTokenRes struct {
+	Claims *CustomClaims
+	Token  string
 }
 
 var SecretKey = []byte("muyu##coin..baby")
 
 // GenerateToken 生成 JWT
-func GenerateToken(wallet string) (string, error) {
+func GenerateToken(wallet string, sessionID string) (string, error) {
 	claims := CustomClaims{
-		Wallet: wallet,
+		Wallet:    wallet,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)), // 设置过期时间
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Minute)), // 设置过期时间
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    "yuka.1*.",
 		},
@@ -34,17 +45,17 @@ func GenerateToken(wallet string) (string, error) {
 }
 
 // ValidateToken 验证并解析 JWT
-func ValidateToken(tokenString string) (*CustomClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+func ValidateToken(tokenString string) (*ValidateTokenRes, error) {
+	token, _ := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return SecretKey, nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
+	//if err != nil {
+	//	return &ValidateTokenRes{}, err
+	//}
 
 	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
 		//检查黑名单
@@ -53,8 +64,56 @@ func ValidateToken(tokenString string) (*CustomClaims, error) {
 			return nil, fmt.Errorf("token is blacklisted")
 		}
 
-		return claims, nil
+		return &ValidateTokenRes{
+			Claims: claims,
+			Token:  "",
+		}, nil
 	} else {
+
+		if claims.ExpiresAt.Time.Before(time.Now()) {
+
+			//判断sessionID 是否存在
+			wallet := claims.Wallet
+			result, err := redis.GetClient().Get(redis.Ctx, wallet).Result()
+
+			if errors.Is(err, redisv8.Nil) {
+
+				return nil, fmt.Errorf("token已过期")
+			} else if err != nil {
+				// 其他 Redis 错误
+				return nil, err
+			}
+
+			// 将 JSON 字符串解析为 Go 的结构体
+			var sessionData SessionData
+			err = json.Unmarshal([]byte(result), &sessionData)
+			if err != nil {
+				logger.Error("Failed to unmarshal JSON data: %v", err)
+				return nil, fmt.Errorf("failed to unmarshal")
+			}
+			sessionID := sessionData.SessionID
+			if sessionID != claims.SessionID {
+				return nil, fmt.Errorf("token错误")
+			}
+			newToken, err := GenerateToken(wallet, sessionID)
+			userData := SessionData{
+				Role:      sessionData.Role,
+				Status:    sessionData.Status,
+				Token:     newToken,
+				SessionID: sessionID,
+			}
+			// 将数据转换为 JSON 字符串
+			jsonData, _ := json.Marshal(userData)
+
+			_, err = redis.GetClient().Set(redis.Ctx, wallet, jsonData, time.Minute*10).Result()
+
+			return &ValidateTokenRes{
+				Claims: claims,
+				Token:  newToken,
+			}, nil
+
+		}
+
 		return nil, fmt.Errorf("invalid token")
 	}
 }
@@ -92,8 +151,10 @@ func Middleware() gin.HandlerFunc {
 		}
 
 		// 将解析后的用户 wallet 设置到上下文中
-		c.Set("wallet", claims.Wallet)
-
+		c.Set("wallet", claims.Claims.Wallet)
+		if claims.Token != "" {
+			c.Header("Authorization", "Bearer "+claims.Token)
+		}
 		// 继续处理请求
 		c.Next()
 	}

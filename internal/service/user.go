@@ -2,10 +2,16 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"github.com/Zkeai/go_template/common/logger"
 	"github.com/Zkeai/go_template/common/middleware"
 	"github.com/Zkeai/go_template/common/redis"
 	"github.com/Zkeai/go_template/internal/repo/db"
+
+	"io"
 	"time"
 )
 
@@ -14,10 +20,15 @@ type UserRegisterResponse struct {
 	User       *db.YuUser // 注册的用户信息
 }
 
-type UserData struct {
-	Role   int    `json:"role"`
-	Status int    `json:"status"`
-	Token  string `json:"token"`
+type SessionData struct {
+	Role      int    `json:"role"`
+	Status    int    `json:"status"`
+	Token     string `json:"token"`
+	SessionID string `json:"session_id"`
+}
+type LoginResponse struct {
+	SessionID string `json:"session_id"`
+	Token     string `json:"token"`
 }
 
 func (s *Service) UserRegister(ctx context.Context, wallet string) (*UserRegisterResponse, error) {
@@ -45,35 +56,58 @@ func (s *Service) UserRegister(ctx context.Context, wallet string) (*UserRegiste
 	}, nil
 }
 
-func (s *Service) UserLogin(ctx context.Context, wallet string) (string, error) {
+func (s *Service) UserLogin(ctx context.Context, wallet string) (*LoginResponse, error) {
 
 	query, err := s.repo.UserQuery(ctx, wallet)
 	if err != nil || query == nil {
-		return "用户不存在", err
+		return &LoginResponse{
+			SessionID: "",
+			Token:     "用户不存在",
+		}, err
+	}
+	//生成sessionID
+	id, err := generateSessionID()
+	if err != nil {
+		return &LoginResponse{}, err
 	}
 
 	//生成jwt
-	token, err := middleware.GenerateToken(wallet)
+	token, err := middleware.GenerateToken(wallet, id)
 	if err != nil {
-		return "", err
+		return &LoginResponse{}, err
 	}
+	//redis取jwt
+	result, err := redis.GetClient().Get(ctx, wallet).Result()
+
+	var sessionData SessionData
+	err = json.Unmarshal([]byte(result), &sessionData)
+	if err != nil {
+		logger.Error("Failed to unmarshal JSON data: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal")
+	}
+
+	_ = middleware.InvalidateToken(sessionData.Token)
 	//redis存数据
-	userData := UserData{
-		Role:   int(query.Type),
-		Status: int(query.Status),
-		Token:  token,
+	userData := SessionData{
+		Role:      int(query.Type),
+		Status:    int(query.Status),
+		Token:     token,
+		SessionID: id,
 	}
 	// 将数据转换为 JSON 字符串
 	jsonData, err := json.Marshal(userData)
 	if err != nil {
-		return "", err
+		return &LoginResponse{}, err
 	}
 
-	_, err = redis.GetClient().Set(ctx, query.Wallet, jsonData, time.Hour*24).Result()
+	_, err = redis.GetClient().Set(ctx, query.Wallet, jsonData, time.Minute*10).Result()
 	if err != nil {
-		return "", err
+		return &LoginResponse{}, err
 	}
-	return token, nil
+	return &LoginResponse{
+		SessionID: id,
+		Token:     token,
+	}, nil
 }
 
 func (s *Service) UserQuery(ctx context.Context, wallet string) (*db.YuUser, error) {
@@ -83,4 +117,13 @@ func (s *Service) UserQuery(ctx context.Context, wallet string) (*db.YuUser, err
 		return nil, err
 	}
 	return userModel, nil
+}
+
+func generateSessionID() (string, error) {
+	b := make([]byte, 32)
+	_, err := io.ReadFull(rand.Reader, b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil // 使用Base64编码生成唯一的Session ID
 }

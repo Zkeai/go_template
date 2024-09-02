@@ -64,11 +64,11 @@ func userLogin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, conf.Response{Code: 500, Msg: "err", Data: err.Error()})
 		return
 	}
-	if res == "用户不存在" {
-		c.JSON(http.StatusBadRequest, conf.Response{Code: 400, Msg: "fail", Data: res})
+	if res.Token == "用户不存在" {
+		c.JSON(http.StatusBadRequest, conf.Response{Code: 400, Msg: "fail", Data: res.Token})
 		return
 	}
-	c.JSON(http.StatusOK, conf.Response{Code: 200, Msg: "success", Data: res})
+	c.JSON(http.StatusOK, conf.Response{Code: 200, Msg: "success", Data: res.Token})
 }
 
 // userQuery 用户查询
