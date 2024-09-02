@@ -1,2 +1,2 @@
 # go_template
-集成 jwt redis mysql gin swagger
+集成 jwt redis mysql gin swagger casbin
