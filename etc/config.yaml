@@ -1,0 +1,14 @@
+server:
+  network: "tcp"
+  address: ":2900"
+  readTimeout: 10s
+  writeTimeout: 10s
+db:
+  dsn: "root:12345678@tcp(127.0.0.1:3306)/yuka?parseTime=true"
+  active: 10
+  idle: 10
+  idleTimeout: 60s
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0

@@ -1,0 +1,8 @@
+p, admin, /api/v1/user/*, GET
+p, admin, /api/v1/user/*, POST
+p, user, /api/v1/user/*, GET
+p, merchant, /api/v1/user/*, GET
+p, merchant, /api/v1/user/*, POST
+
+g, alice, admin
+g, bob, user

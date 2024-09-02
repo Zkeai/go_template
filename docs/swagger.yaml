@@ -1,0 +1,124 @@
+basePath: /api/v1
+definitions:
+  conf.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      msg:
+        type: string
+    type: object
+  conf.ResponseError:
+    properties:
+      code:
+        type: integer
+      err:
+        type: string
+      msg:
+        type: string
+    type: object
+  dto.UserLoginReq:
+    properties:
+      wallet:
+        type: string
+    type: object
+  dto.UserRegisterReq:
+    properties:
+      wallet:
+        type: string
+    type: object
+host: localhost:2900
+info:
+  contact: {}
+  description: 木鱼发卡 https://github.com/zkeai
+  title: MuPay
+  version: 1.0.0
+paths:
+  /user/protected/query:
+    get:
+      parameters:
+      - description: 地址
+        in: query
+        name: wallet
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/conf.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/conf.ResponseError'
+        "500":
+          description: 内部错误
+          schema:
+            type: string
+      summary: 用户查询
+      tags:
+      - user
+  /user/public/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户登录提交参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserLoginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/conf.Response'
+        "400":
+          description: 参数错误
+          schema:
+            type: string
+        "500":
+          description: 内部错误
+          schema:
+            type: string
+      summary: 用户登录
+      tags:
+      - user
+  /user/public/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 管理员注册提交参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserRegisterReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/conf.Response'
+        "400":
+          description: 参数错误
+          schema:
+            type: string
+        "500":
+          description: 内部错误
+          schema:
+            type: string
+      summary: 用户注册
+      tags:
+      - user
+securityDefinitions:
+  Authorization:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
