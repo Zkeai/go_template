@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Zkeai/go_template/common/logger"
 	"github.com/Zkeai/go_template/common/middleware"
 	"github.com/Zkeai/go_template/common/redis"
 	"github.com/Zkeai/go_template/internal/repo/db"
+	redisv8 "github.com/go-redis/redis/v8"
 
 	"io"
 	"time"
@@ -80,13 +82,16 @@ func (s *Service) UserLogin(ctx context.Context, wallet string) (*LoginResponse,
 	result, err := redis.GetClient().Get(ctx, wallet).Result()
 
 	var sessionData SessionData
-	err = json.Unmarshal([]byte(result), &sessionData)
-	if err != nil {
-		logger.Error("Failed to unmarshal JSON data: %v", err)
-		return nil, fmt.Errorf("failed to unmarshal")
+	if errors.Is(err, redisv8.Nil) {
+	} else {
+		err = json.Unmarshal([]byte(result), &sessionData)
+		if err != nil {
+			logger.Error("Failed to unmarshal JSON data: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal")
+		}
+		_ = middleware.InvalidateToken(sessionData.Token)
 	}
 
-	_ = middleware.InvalidateToken(sessionData.Token)
 	//redis存数据
 	userData := SessionData{
 		Role:      int(query.Type),
